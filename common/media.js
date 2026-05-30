@@ -137,13 +137,12 @@ export async function applyBackgroundMusic({
   inputVideoPath,
   musicPath,
   outputPath,
-  volume = 0.2,
   fadeDuration = 2,
 }) {
   const videoDuration = await probeMediaDuration(inputVideoPath);
   const hasAudio = await probeHasAudio(inputVideoPath);
   const fadeOutStart = Math.max(0, videoDuration - fadeDuration);
-  const musicFilter = `[1:a]volume=${volume},afade=t=in:st=0:d=${fadeDuration},afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${fadeDuration}[bgm]`;
+  const musicFilter = `[1:a]afade=t=in:st=0:d=${fadeDuration},afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${fadeDuration}[bgm]`;
   const filter = hasAudio
     ? `${musicFilter};[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[aout]`
     : `${musicFilter};[bgm]atrim=duration=${videoDuration.toFixed(3)},asetpts=PTS-STARTPTS[aout]`;

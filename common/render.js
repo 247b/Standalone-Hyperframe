@@ -249,7 +249,6 @@ async function applyBgMusicIfNeeded(
     inputVideoPath,
     musicPath: bgMusicPath,
     outputPath: bgOutputPath,
-    volume: 0.5,
     fadeDuration: 2,
   });
 
