@@ -236,8 +236,12 @@ function parseL3L4(payload) {
     bgMusic: payload.bgMusic ? String(payload.bgMusic) : null,
     titleCard: payload.titleCard
       ? {
-          vidSrc: payload.titleCard.vidSrc ? String(payload.titleCard.vidSrc) : "",
-          titleText: payload.titleCard.titleText ? String(payload.titleCard.titleText) : "",
+          vidSrc: payload.titleCard.vidSrc
+            ? String(payload.titleCard.vidSrc)
+            : "",
+          titleText: payload.titleCard.titleText
+            ? String(payload.titleCard.titleText)
+            : "",
         }
       : null,
     sections: parsed,
@@ -245,6 +249,7 @@ function parseL3L4(payload) {
 }
 
 const OST_ANIMATION = { fadeIn: 0.5, fadeOut: 0.5 };
+const ENABLE_TOP_RIGHT_OVERLAY = true;
 
 export async function prepareAssets(
   jobDir,
@@ -263,7 +268,9 @@ export async function prepareAssets(
   if (l3l4.titleCard?.vidSrc) {
     const titleVideoRel = "assets/title-card.mp4";
     const titleVideoAbs = path.join(jobDir, titleVideoRel);
-    console.log(`[TitleCardDownloadStarted][${jobId}] Resolving title card source video`);
+    console.log(
+      `[TitleCardDownloadStarted][${jobId}] Resolving title card source video`,
+    );
     if (!assetCache) {
       throw new Error("Asset cache is required for L3L4 asset preparation");
     }
@@ -328,21 +335,29 @@ export async function prepareAssets(
     width: l3l4.width,
     height: l3l4.height,
     fps: 30,
+    jobId,
+    taskName: "MainSectionsStitch",
   });
   const stitchedMainDuration = await probeMediaDuration(stitchedMainAbs);
 
-  if (l3l4.overlayImage) {
+  if (ENABLE_TOP_RIGHT_OVERLAY && l3l4.overlayImage) {
     let imageExt = ".png";
     try {
-      const ext = path.extname(new URL(l3l4.overlayImage).pathname).toLowerCase();
+      const ext = path
+        .extname(new URL(l3l4.overlayImage).pathname)
+        .toLowerCase();
       if (ext) imageExt = ext;
     } catch (_) {}
     overlayImageRel = `assets/top-right-overlay${imageExt}`;
-    await assetCache.materialize(l3l4.overlayImage, path.join(jobDir, overlayImageRel), {
-      fallbackExt: ".png",
-      jobId,
-      label: "top-right-overlay",
-    });
+    await assetCache.materialize(
+      l3l4.overlayImage,
+      path.join(jobDir, overlayImageRel),
+      {
+        fallbackExt: ".png",
+        jobId,
+        label: "top-right-overlay",
+      },
+    );
   }
 
   clips.push({
@@ -368,7 +383,7 @@ export async function prepareAssets(
     });
   }
 
-  if (overlayImageRel) {
+  if (ENABLE_TOP_RIGHT_OVERLAY && overlayImageRel) {
     clips.push({
       id: "l3l4-top-right-overlay",
       type: "topRightImage",
@@ -431,12 +446,17 @@ export function normalizeTimelineInput(payload) {
   if (payload && !Array.isArray(payload)) {
     if (payload.intro) timelineData.intro = String(payload.intro);
     if (payload.outro) timelineData.outro = String(payload.outro);
-    if (payload.overlayImage) timelineData.overlayImage = String(payload.overlayImage);
+    if (payload.overlayImage)
+      timelineData.overlayImage = String(payload.overlayImage);
     if (payload.bgMusic) timelineData.bgMusic = String(payload.bgMusic);
     if (payload.titleCard) {
       timelineData.titleCard = {
-        vidSrc: payload.titleCard.vidSrc ? String(payload.titleCard.vidSrc) : "",
-        titleText: payload.titleCard.titleText ? String(payload.titleCard.titleText) : "",
+        vidSrc: payload.titleCard.vidSrc
+          ? String(payload.titleCard.vidSrc)
+          : "",
+        titleText: payload.titleCard.titleText
+          ? String(payload.titleCard.titleText)
+          : "",
       };
     }
   }

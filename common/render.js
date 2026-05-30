@@ -33,10 +33,14 @@ export function runRender(
     );
 
     proc.stdout?.on("data", (chunk) => {
-      job.log += chunk.toString();
+      const text = chunk.toString();
+      job.log += text;
+      logProcessOutput("HyperFramesStdout", jobId, text);
     });
     proc.stderr?.on("data", (chunk) => {
-      job.log += chunk.toString();
+      const text = chunk.toString();
+      job.log += text;
+      logProcessOutput("HyperFramesStderr", jobId, text);
     });
 
     proc.on("close", async (code) => {
@@ -147,6 +151,13 @@ export function runRender(
   });
 }
 
+function logProcessOutput(taskName, jobId, text) {
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed) console.log(`[${taskName}][${jobId}] ${trimmed}`);
+  }
+}
+
 async function stitchPhase(jobId, hyperframesOutputPath, jobs, assetCache) {
   const job = jobs.get(jobId);
   const stitchDir = path.join(job.compositionDir, "stitch");
@@ -184,6 +195,8 @@ async function stitchPhase(jobId, hyperframesOutputPath, jobs, assetCache) {
     width: job.width || 1920,
     height: job.height || 1080,
     fps: 30,
+    jobId,
+    taskName: "IntroOutroStitch",
   });
   await fs.copyFile(tmpOut, job.finalArtifactPath);
 }

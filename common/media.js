@@ -62,7 +62,15 @@ export function downloadToFile(url, destPath, { timeoutMs = 120000 } = {}) {
   })();
 }
 
-export async function stitchSegments({ inputs, outputPath, width, height, fps = 30 }) {
+export async function stitchSegments({
+  inputs,
+  outputPath,
+  width,
+  height,
+  fps = 30,
+  jobId = 'unknown',
+  taskName = 'FfmpegStitch',
+}) {
   const probes = await Promise.all(inputs.map(async (p) => ({
     path: p,
     hasAudio: await probeHasAudio(p),
@@ -93,19 +101,33 @@ export async function stitchSegments({ inputs, outputPath, width, height, fps = 
   args.push(
     '-filter_complex', filter,
     '-map', '[outv]', '-map', '[outa]',
-    '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p',
+    '-c:v', 'libx264', '-preset', process.env.FFMPEG_PRESET || 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
     '-c:a', 'aac', '-b:a', '192k',
     '-movflags', '+faststart',
     outputPath,
   );
 
   return new Promise((resolve, reject) => {
+    console.log(`[${taskName}Started][${jobId}] Stitching ${inputs.length} segment(s) with ffmpeg`);
     const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = '';
-    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+    let lastProgressLogAt = 0;
+    proc.stderr.on('data', (d) => {
+      const text = d.toString();
+      stderr += text;
+      const match = text.match(/time=(\d{2}:\d{2}:\d{2}\.\d{2})/);
+      const now = Date.now();
+      if (match && now - lastProgressLogAt > 10000) {
+        lastProgressLogAt = now;
+        console.log(`[${taskName}Progress][${jobId}] ffmpeg time=${match[1]}`);
+      }
+    });
     proc.on('error', (err) => reject(new Error(`ffmpeg stitch spawn failed: ${err.message}`)));
     proc.on('close', (code) => {
-      if (code === 0) return resolve();
+      if (code === 0) {
+        console.log(`[${taskName}Completed][${jobId}] ffmpeg stitch completed`);
+        return resolve();
+      }
       reject(new Error(`ffmpeg stitch failed (code ${code}): ${stderr.slice(-600)}`));
     });
   });
