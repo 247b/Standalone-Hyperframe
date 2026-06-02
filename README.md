@@ -159,6 +159,7 @@ HH-MM-SSAM_DD-MM-YYYY_STRATEGY.mp4
 - `strategies/l3l4/index.js` - video-section strategy and generated HyperFrames composition HTML.
 - `strategies/l1l2/index.js` - image-plus-audio strategy and generated HyperFrames composition data.
 - `strategies/l3l4/payload.example.json` - example L3/L4 request body.
+- `strategies/l1l2/payload.example.json` - example L1/L2 image-plus-audio request body.
 - `ost-box-style-guide.txt` - Figma-derived visual reference for OST chip styling.
 - `hyperframes.json` - HyperFrames registry/path config copied into job workspaces.
 - `meta.json` - project id/name metadata.
