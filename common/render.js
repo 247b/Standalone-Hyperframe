@@ -16,17 +16,18 @@ export function runRender(
 
   return new Promise((resolve) => {
     const proc = spawn(
-      "bunx",
+      "bun",
       [
-        "--bun",
-        `hyperframes@${process.env.HYPERFRAMES_VERSION || "0.6.69"}`,
+        "run",
+        "hyperframes",
         "render",
+        path.dirname(compositionPath),
         "--output",
         mainArtifactPath,
         "--quality",
         process.env.RENDER_QUALITY || "standard",
       ],
-      { cwd: path.dirname(compositionPath) },
+      { cwd: process.cwd() },
     );
 
     proc.stdout?.on("data", (chunk) => {

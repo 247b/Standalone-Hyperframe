@@ -9,6 +9,7 @@ A Bun service that accepts JSON payloads, generates HyperFrames compositions, re
 | Bun | Runs the HTTP server and project scripts |
 | Node/npm | Used only for npm script compatibility |
 | ffmpeg / ffprobe | Required for probing, re-encoding, and background music |
+| Local dependencies | Run `bun install` before rendering; HyperFrames is installed as a local package |
 | UploadThing token | Required only when completed videos should upload |
 
 The service listens on port `3001` by default.
@@ -33,6 +34,11 @@ bun run check
 bun run render
 bun run publish
 ```
+Stop service already running in 3001 (windows)? :
+```bash
+Stop-Process -Id (Get-NetTCPConnection -LocalPort 3001).OwningProcess -Force
+
+```
 
 ## Environment
 
@@ -41,7 +47,6 @@ bun run publish
 | `PORT` | `3001` | HTTP server port |
 | `CORS_ORIGIN` | `*` | CORS origin |
 | `UPLOADTHING_TOKEN` | none | UploadThing authentication |
-| `HYPERFRAMES_VERSION` | `0.6.69` | HyperFrames render CLI version |
 | `RENDER_QUALITY` | `standard` | Render quality passed to HyperFrames |
 | `FFMPEG_PRESET` | `veryfast` | ffmpeg preset for video re-encoding |
 
@@ -68,6 +73,7 @@ The server accepts one JSON payload per `POST /render` request.
 | `intro` | Conditional | Optional intro video link |
 | `outro` | Conditional | Optional outro video link |
 | `titleCard` | Conditional | Optional title card object |
+| `keyLearnings` | Conditional | Optional key learnings screen object |
 | `scenes` | Conditional | Optional scene array |
 | `logo` | No | Optional logo image link |
 | `bgMusic` | No | Optional background music audio link |
@@ -77,6 +83,7 @@ The server accepts one JSON payload per `POST /render` request.
 - `intro`
 - `outro`
 - `titleCard`
+- `keyLearnings`
 - `scenes`
 
 `logo` and `bgMusic` can be added only when the payload has at least one conditional render input. They do not create a video by themselves.
@@ -96,6 +103,19 @@ When `titleCard` is present, both fields are required:
 | --- | --- | --- |
 | `titleCard.vidSrc` | Yes | Title card video link |
 | `titleCard.titleText` | Yes | Text rendered over the title card |
+
+### Key Learnings
+
+`keyLearnings` is available for both `L1L2` and `L3L4`. It renders after all `scenes` and before `outro`. When present, its background video duration drives the key learnings screen duration.
+
+All fields are required:
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `keyLearnings.vidSrc` | Yes | Key learnings background video link |
+| `keyLearnings.blue` | Yes | Blue title word, localized by the caller |
+| `keyLearnings.green` | Yes | Green title word, localized by the caller |
+| `keyLearnings.points` | Yes | Exactly four non-empty point strings |
 
 ### Scenes
 

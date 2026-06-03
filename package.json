@@ -4,11 +4,15 @@
   "type": "module",
   "scripts": {
     "dev": "bun run server.js",
-    "check": "bunx --bun hyperframes@0.6.69 lint && bunx --bun hyperframes@0.6.69 validate && bunx --bun hyperframes@0.6.69 inspect",
-    "render": "bunx --bun hyperframes@0.6.69 render",
-    "publish": "bunx --bun hyperframes@0.6.69 publish"
+    "check": "bun run hyperframes lint && bun run hyperframes validate && bun run hyperframes inspect",
+    "render": "bun run hyperframes render",
+    "publish": "bun run hyperframes publish"
   },
   "dependencies": {
     "uploadthing": "^7.7.4"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.0",
+    "hyperframes": "0.6.69"
   }
 }

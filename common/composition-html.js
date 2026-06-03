@@ -14,6 +14,69 @@ function truncateDuration(duration) {
   return Math.floor(duration * 100) / 100;
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function buildCharacterSpans(value) {
+  return Array.from(String(value))
+    .map((char) => {
+      const text = char === " " ? "&nbsp;" : escapeHtml(char);
+      return `<span class="key-learning-char">${text}</span>`;
+    })
+    .join("");
+}
+
+function estimateKeyLearningPointWidth(points) {
+  const maxChars = points.reduce((max, point) => Math.max(max, Array.from(String(point)).length), 0);
+  const bulletAndPaddingWidth = 128;
+  const estimatedTextWidth = maxChars * 31;
+  return Math.min(1640, Math.max(1306, bulletAndPaddingWidth + estimatedTextWidth));
+}
+
+function estimateKeyLearningFontSize(points, pointWidth) {
+  const maxChars = points.reduce((max, point) => Math.max(max, Array.from(String(point)).length), 0);
+  const availableTextWidth = pointWidth - 128;
+  const estimatedTextWidth = Math.max(1, maxChars * 31);
+  if (estimatedTextWidth <= availableTextWidth) return 62;
+  return Math.max(46, Math.floor(62 * (availableTextWidth / estimatedTextWidth)));
+}
+
+function buildKeyLearningsHtml({ baseAttrs, content }) {
+  const attrs = baseAttrs.replace('class="clip"', 'class="clip key-learning-screen"');
+  const points = Array.isArray(content?.points) ? content.points.slice(0, 4) : [];
+  const pointWidth = estimateKeyLearningPointWidth(points);
+  const pointFontSize = estimateKeyLearningFontSize(points, pointWidth);
+  const pointRows = points
+    .map(
+      (point, index) => `
+        <div class="key-learning-point" data-point-index="${index}">
+          <div class="key-learning-point-text">
+            <span class="key-learning-bullet">&bull;</span>
+            <span class="key-learning-copy">${buildCharacterSpans(point)}</span>
+          </div>
+        </div>`,
+    )
+    .join("");
+
+  return `<div ${attrs}>
+        <div class="key-learning-frame">
+          <div class="key-learning-title">
+            <div class="key-learning-blue">${escapeHtml(content?.blue ?? "")}</div>
+            <div class="key-learning-green">${escapeHtml(content?.green ?? "")}</div>
+          </div>
+          <div class="key-learning-points" style="--key-learning-point-width: ${pointWidth}px; --key-learning-point-font-size: ${pointFontSize}px">
+            ${pointRows}
+          </div>
+        </div>
+      </div>`;
+}
+
 function buildClipHtml(clip) {
   const {
     id: clipId,
@@ -64,6 +127,9 @@ function buildClipHtml(clip) {
       "pointer-events: none",
     ].join("; ");
     return `<div ${baseAttrs} style="${defaultStyle} ${customStyle}">${content}</div>`;
+  }
+  if (type === "keyLearnings") {
+    return buildKeyLearningsHtml({ baseAttrs, content });
   }
   if (type === "image") {
     const defaultStyle =
@@ -165,6 +231,27 @@ function buildAnimationScript(clips, compositionId) {
         ].join("\n");
       }
 
+      if (type === "keyLearnings") {
+        const pointRevealStart = truncateDuration(start + 1.1);
+        const pointHoldEnd = Math.max(start + duration - fadeOut, pointRevealStart);
+        const pointTweens = [0, 1, 2, 3]
+          .map((pointIndex) => {
+            const pointStart = truncateDuration(pointRevealStart + pointIndex * 0.52);
+            return [
+              `  tl.fromTo("#${id} .key-learning-point[data-point-index='${pointIndex}']", { x: -48, opacity: 0 }, { x: 0, opacity: 1, duration: 0.36, ease: "power3.out" }, ${pointStart});`,
+              `  tl.fromTo("#${id} .key-learning-point[data-point-index='${pointIndex}'] .key-learning-char", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.04, stagger: 0.012, ease: "none" }, ${truncateDuration(pointStart + 0.12)});`,
+            ].join("\n");
+          })
+          .join("\n");
+        return [
+          `  tl.fromTo("#${id}", { opacity: 0 }, { opacity: 1, duration: ${fadeIn} }, ${start});`,
+          `  tl.fromTo("#${id} .key-learning-blue", { x: 220, opacity: 0 }, { x: 0, opacity: 1, duration: 0.65, ease: "back.out(1.25)" }, ${truncateDuration(start + 0.15)});`,
+          `  tl.fromTo("#${id} .key-learning-green", { x: -260, opacity: 0 }, { x: 0, opacity: 1, duration: 0.72, ease: "expo.out" }, ${truncateDuration(start + 0.35)});`,
+          pointTweens,
+          `  tl.to("#${id}", { opacity: 0, duration: ${fadeOut}, ease: "power2.in" }, ${pointHoldEnd});`,
+        ].join("\n");
+      }
+
       const hold = duration - fadeIn - fadeOut;
       return [
         `  tl.fromTo("#${id}", { opacity: 0 }, { opacity: 1, duration: ${fadeIn} }, ${start});`,
@@ -234,6 +321,7 @@ export function generateCompositionHtml(timelineData) {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;1,900&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -245,6 +333,105 @@ export function generateCompositionHtml(timelineData) {
         font-family: 'Geist', sans-serif;
       }
       .clip { opacity: 0; }
+      .key-learning-screen {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        padding: 0;
+        overflow: hidden;
+        pointer-events: none;
+      }
+      .key-learning-frame {
+        width: 100%;
+        max-width: 1920px;
+        height: 1080px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 92px 10px;
+        gap: 63px;
+      }
+      .key-learning-title {
+        width: 972px;
+        height: 325px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .key-learning-blue,
+      .key-learning-green {
+        font-family: 'Inter', sans-serif;
+        font-style: italic;
+        font-weight: 900;
+        font-size: 166.32px;
+        letter-spacing: 0;
+        text-transform: uppercase;
+        font-variation-settings: 'slnt' -10;
+        will-change: transform, opacity;
+      }
+      .key-learning-blue {
+        width: 350px;
+        height: 125px;
+        line-height: 75%;
+        color: #0092D9;
+        text-shadow: 4.32px 4.32px 0 #013B58, 7.56px 10.8px 0 #000000;
+      }
+      .key-learning-green {
+        width: 972px;
+        height: 200px;
+        line-height: 200px;
+        color: #A4CD4E;
+        text-shadow: 4.32px 4.32px 0 #3F4C1B, 7.56px 10.8px 0 #000000;
+      }
+      .key-learning-points {
+        width: min(calc(var(--key-learning-point-width) + 32px), 1704px);
+        min-width: min(calc(var(--key-learning-point-width) + 32px), 1704px);
+        height: 508px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 16px;
+        gap: 10px;
+      }
+      .key-learning-point {
+        width: min(var(--key-learning-point-width), 1640px);
+        height: 81px;
+        flex: 0 0 81px;
+        background: #FFFFFF;
+        box-shadow: 0 7px 0 #328EFE;
+        overflow: hidden;
+        will-change: transform, opacity;
+      }
+      .key-learning-point-text {
+        width: 100%;
+        height: 75px;
+        display: flex;
+        align-items: center;
+        gap: 28px;
+        padding: 0 32px;
+        font-family: 'Inter', sans-serif;
+        font-style: normal;
+        font-weight: 400;
+        font-size: var(--key-learning-point-font-size, 62px);
+        line-height: 75px;
+        color: #000000;
+        white-space: nowrap;
+      }
+      .key-learning-bullet {
+        flex: 0 0 auto;
+      }
+      .key-learning-copy {
+        min-width: 0;
+        overflow: visible;
+      }
+      .key-learning-char {
+        display: inline-block;
+        white-space: pre;
+      }
     </style>
   </head>
   <body>

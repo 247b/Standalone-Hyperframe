@@ -9,6 +9,17 @@
     "vidSrc": "optional title card video link",
     "titleText": "Example Highlight Video"
   },
+  "keyLearnings": {
+    "vidSrc": "optional key learnings background video link",
+    "blue": "KEY",
+    "green": "LEARNINGS",
+    "points": [
+      "Don't rush, build trust",
+      "Show success, build confidence",
+      "Map your plan with client's financial plan",
+      "Ensure followup"
+    ]
+  },
   "scenes": [
     {
       "link": "s3 video link",

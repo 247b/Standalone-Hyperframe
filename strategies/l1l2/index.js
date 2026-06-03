@@ -45,8 +45,9 @@ function parseL1L2(payload) {
   const hasScenesKey = Object.prototype.hasOwnProperty.call(payload, "scenes");
   const scenes = hasScenesKey && Array.isArray(payload.scenes) ? payload.scenes : [];
   const hasTitleCard = Boolean(payload.titleCard);
+  const hasKeyLearnings = Boolean(payload.keyLearnings);
   const hasRenderableMedia = Boolean(
-    payload.intro || payload.outro || hasTitleCard || scenes.length > 0,
+    payload.intro || payload.outro || hasTitleCard || hasKeyLearnings || scenes.length > 0,
   );
 
   if (hasTitleCard && (typeof payload.titleCard !== "object" || Array.isArray(payload.titleCard))) {
@@ -55,12 +56,26 @@ function parseL1L2(payload) {
   if (hasTitleCard && (!payload.titleCard.vidSrc || !payload.titleCard.titleText)) {
     throw new Error('Invalid "titleCard": provide both "vidSrc" and "titleText"');
   }
+  if (hasKeyLearnings && (typeof payload.keyLearnings !== "object" || Array.isArray(payload.keyLearnings))) {
+    throw new Error('Invalid "keyLearnings": expected an object with "vidSrc", "blue", "green", and four "points"');
+  }
+  if (
+    hasKeyLearnings &&
+    (!payload.keyLearnings.vidSrc ||
+      !payload.keyLearnings.blue ||
+      !payload.keyLearnings.green ||
+      !Array.isArray(payload.keyLearnings.points) ||
+      payload.keyLearnings.points.length !== 4 ||
+      payload.keyLearnings.points.some((point) => typeof point !== "string" || !point.trim()))
+  ) {
+    throw new Error('Invalid "keyLearnings": provide "vidSrc", "blue", "green", and exactly four non-empty string "points"');
+  }
   if (hasScenesKey && scenes.length === 0) {
     throw new Error('Invalid "scenes": expected a non-empty array when provided');
   }
   if (!hasRenderableMedia) {
     throw new Error(
-      'Missing dependencies: provide at least one of "intro", "outro", "titleCard", or a non-empty "scenes" array. "logo" and "bgMusic" require renderable media.',
+      'Missing dependencies: provide at least one of "intro", "outro", "titleCard", "keyLearnings", or a non-empty "scenes" array. "logo" and "bgMusic" require renderable media.',
     );
   }
 
@@ -88,6 +103,14 @@ function parseL1L2(payload) {
       ? {
           vidSrc: payload.titleCard.vidSrc ? String(payload.titleCard.vidSrc) : "",
           titleText: payload.titleCard.titleText ? String(payload.titleCard.titleText) : "",
+        }
+      : null,
+    keyLearnings: payload.keyLearnings
+      ? {
+          vidSrc: String(payload.keyLearnings.vidSrc),
+          blue: String(payload.keyLearnings.blue),
+          green: String(payload.keyLearnings.green),
+          points: payload.keyLearnings.points.map((point) => String(point).trim()),
         }
       : null,
     scenes: parsed,
@@ -157,6 +180,29 @@ export async function prepareAssets(
     titleCardRelPath = titleVideoRel;
     console.log(
       `[TitleCardProbeCompleted][${jobId}] Probed title card duration=${rawDuration.toFixed(3)}s → truncated=${titleCardDuration}s`,
+    );
+  }
+
+  // --- Key learnings ---
+  let keyLearningsRelPath = null;
+  let keyLearningsDuration = 0;
+  if (l1l2.keyLearnings?.vidSrc) {
+    const keyLearningsRel = "assets/key-learnings.mp4";
+    const keyLearningsAbs = path.join(jobDir, keyLearningsRel);
+    console.log(
+      `[KeyLearningsDownloadStarted][${jobId}] Resolving key learnings source video`,
+    );
+    await assetCache.materialize(l1l2.keyLearnings.vidSrc, keyLearningsAbs, {
+      fallbackExt: ".mp4",
+      jobId,
+      label: "key-learnings",
+    });
+    await reencodeForSeek(keyLearningsAbs, { jobId, label: "key-learnings" });
+    const rawDuration = await probeMediaDuration(keyLearningsAbs);
+    keyLearningsDuration = truncateDuration(rawDuration);
+    keyLearningsRelPath = keyLearningsRel;
+    console.log(
+      `[KeyLearningsProbeCompleted][${jobId}] Probed key learnings duration=${rawDuration.toFixed(3)}s -> truncated=${keyLearningsDuration}s`,
     );
   }
 
@@ -285,7 +331,9 @@ export async function prepareAssets(
   //   300 - logo image (full span)
 
   const mainDuration = truncateDuration(
-    titleCardDuration + scenes.reduce((sum, s) => sum + s.duration, 0),
+    titleCardDuration +
+      scenes.reduce((sum, s) => sum + s.duration, 0) +
+      keyLearningsDuration,
   );
   const totalDuration = truncateDuration(introDuration + mainDuration + outroDuration);
 
@@ -379,6 +427,29 @@ export async function prepareAssets(
       });
     }
     cursor = truncateDuration(cursor + section.duration);
+  }
+
+  if (keyLearningsRelPath) {
+    clips.push({
+      id: "l1l2-key-learnings-video",
+      type: "video",
+      content: keyLearningsRelPath,
+      start: cursor,
+      duration: keyLearningsDuration,
+      mediaDuration: keyLearningsDuration,
+      trackIndex: 100,
+      animation: { fadeIn: 0, fadeOut: 0 },
+    });
+    clips.push({
+      id: "l1l2-key-learnings-overlay",
+      type: "keyLearnings",
+      content: l1l2.keyLearnings,
+      start: cursor,
+      duration: keyLearningsDuration,
+      trackIndex: 250,
+      animation: { fadeIn: 0.3, fadeOut: 0.3 },
+    });
+    cursor = truncateDuration(cursor + keyLearningsDuration);
   }
 
   // Outro
