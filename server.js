@@ -5,9 +5,9 @@ import { randomUUID } from 'crypto';
 import { runRender } from './common/render.js';
 import { createJobStore } from './common/job-store.js';
 import { createAssetCache } from './common/asset-cache.js';
+import { generateCompositionHtml } from './common/composition-html.js';
 import {
   normalizeTimelineInput as normalizeL3L4Input,
-  generateCompositionHtml,
   prepareAssets as prepareL3L4Assets,
 } from './strategies/l3l4/index.js';
 import {
@@ -16,15 +16,18 @@ import {
 } from './strategies/l1l2/index.js';
 
 function normalizeTimelineInput(payload) {
-  const type = Array.isArray(payload)
-    ? ''
-    : typeof payload?.type === 'string'
-      ? payload.type.toUpperCase()
-      : '';
-  if (type === 'L1L2' || type === 'L1' || type === 'L2') {
+  if (!payload || Array.isArray(payload) || typeof payload.type !== 'string') {
+    throw new Error('Missing required field "type". Supported values: "L1L2", "L3L4"');
+  }
+
+  const type = payload.type.toUpperCase();
+  if (type === 'L1L2') {
     return normalizeL1L2Input(payload);
   }
-  return normalizeL3L4Input(payload);
+  if (type === 'L3L4') {
+    return normalizeL3L4Input(payload);
+  }
+  throw new Error(`Unsupported timeline type "${payload.type}". Supported values: "L1L2", "L3L4"`);
 }
 
 const PORT = process.env.PORT || 3001;
@@ -33,6 +36,15 @@ const RENDERS_DIR = path.join(__dirname, 'renders');
 const JOBS_DIR = path.join(__dirname, '.jobs');
 const ASSET_CACHE_DIR = path.join(__dirname, '.asset-cache');
 const JOBS_DB_PATH = path.join(JOBS_DIR, 'jobs.sqlite');
+const HYPERFRAMES_CONFIG = {
+  $schema: 'https://hyperframes.heygen.com/schema/hyperframes.json',
+  registry: 'https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry',
+  paths: {
+    blocks: 'compositions',
+    components: 'compositions/components',
+    assets: 'assets',
+  },
+};
 const jobs = new Map();
 const reservedRenderFileNames = new Set();
 
@@ -127,7 +139,7 @@ async function handleRender(req) {
       ? `array(len=${rawPayload.length})`
       : `object(keys=[${Object.keys(rawPayload || {}).join(', ')}])`;
     return jsonResponse({
-      error: 'Field "id" is required, or send a strategy payload with "sections":[...].',
+      error: 'Field "id" is required, or send a strategy payload with "scenes":[...].',
       received: receivedShape,
     }, 422);
   }
@@ -160,8 +172,6 @@ async function handleRender(req) {
     mainArtifactPath,
     finalArtifactPath,
     strategyName,
-    intro: timelineData.intro || null,
-    outro: timelineData.outro || null,
     bgMusic: timelineData.bgMusic || null,
     width: timelineData.width || 1920,
     height: timelineData.height || 1080,
@@ -212,16 +222,15 @@ async function startJobPipeline({ jobId, timelineData, compositionDir, artifacts
 
     if (timelineData._kind === 'L3L4') {
       timelineData = await prepareL3L4Assets(compositionDir, timelineData, jobId, assetCache);
-      job.intro = null;
-      job.outro = null;
     } else if (timelineData._kind === 'L1L2') {
       timelineData = await prepareL1L2Assets(compositionDir, timelineData, jobId, assetCache);
-      job.intro = null;
-      job.outro = null;
     }
 
     await fs.writeFile(compositionPath, generateCompositionHtml(timelineData));
-    await fs.copyFile(path.join(__dirname, 'hyperframes.json'), path.join(compositionDir, 'hyperframes.json'));
+    await fs.writeFile(
+      path.join(compositionDir, 'hyperframes.json'),
+      JSON.stringify(HYPERFRAMES_CONFIG, null, 2),
+    );
 
     job.status = 'rendering';
     job.startedAt = new Date().toISOString();

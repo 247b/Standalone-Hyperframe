@@ -1,23 +1,22 @@
 {
   "type": "L3L4",
-  "id": "l3l4-demo-001",
-  "intro": "https://example.com/intro.mp4",
-  "outro": "https://example.com/outro.mp4",
-  "overlayImage": "https://example.com/top-right-overlay.png",
-  "bgMusic": "https://example.com/background-music.mp3",
-  "background": "#000000",
+  "id": "l3l4-example-job",
+  "intro": "optional intro video link",
+  "outro": "optional outro video link",
+  "logo": "optional logo image link",
+  "bgMusic": "optional background music audio link",
   "titleCard": {
-    "vidSrc": "https://example.com/title-card.mp4",
-    "titleText": "Title text"
+    "vidSrc": "optional title card video link",
+    "titleText": "Example Highlight Video"
   },
-  "sections": [
+  "scenes": [
     {
-      "link": "https://example.com/section-1.mp4",
-      "ost": "On-screen text for video 1"
+      "link": "s3 video link",
+      "ost": "First on-screen text"
     },
     {
-      "link": "https://example.com/section-2.mp4",
-      "ost": "On-screen text for video 2"
+      "link": "s3 video link",
+      "ost": "Second on-screen text"
     }
   ]
 }

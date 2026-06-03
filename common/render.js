@@ -1,11 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { spawn } from "child_process";
-import {
-  applyBackgroundMusic,
-  downloadToFile,
-  stitchSegments,
-} from "./media.js";
+import { applyBackgroundMusic, downloadToFile } from "./media.js";
 import { uploadVideoToUploadThing } from "./uploadthing.js";
 
 export function runRender(
@@ -55,62 +51,7 @@ export function runRender(
         return;
       }
 
-      if (!job.intro && !job.outro) {
-        try {
-          const { outputPath: publishPath, fileName } =
-            await publishConfig.buildUniqueOutputPath(
-              job.strategyName,
-              publishConfig.rendersDir,
-            );
-          const finalSourcePath = await applyBgMusicIfNeeded(
-            jobId,
-            mainArtifactPath,
-            jobs,
-            jobStore,
-            publishConfig.assetCache,
-          );
-          await publishFinal(jobId, finalSourcePath, publishPath, jobs);
-          job.plannedOutputPath = publishPath;
-          job.reservedOutputFileName = fileName;
-          await uploadCompletedVideo(
-            jobId,
-            publishPath,
-            fileName,
-            jobs,
-            jobStore,
-          );
-          job.status = "complete";
-          job.completedAt = new Date().toISOString();
-          jobStore?.save(job);
-          await cleanupCompletedJobWorkspace(jobId, jobs);
-          console.log(
-            `[VideoProductionCompleted][${jobId}] Video production completed`,
-          );
-        } catch (err) {
-          job.status = "failed";
-          job.error = `Publish failed: ${err.message}`;
-          job.failedAt = new Date().toISOString();
-          jobStore?.save(job);
-          console.error(
-            `[PublishFailed][${jobId}] Publish failed: ${err.message}`,
-          );
-        }
-        resolve(job);
-        return;
-      }
-
-      job.status = "stitching";
-      jobStore?.save(job);
-      console.log(
-        `[StitchingIntroOutro][${jobId}] Stitching intro/outro started`,
-      );
       try {
-        await stitchPhase(
-          jobId,
-          mainArtifactPath,
-          jobs,
-          publishConfig.assetCache,
-        );
         const { outputPath: publishPath, fileName } =
           await publishConfig.buildUniqueOutputPath(
             job.strategyName,
@@ -118,7 +59,7 @@ export function runRender(
           );
         const finalSourcePath = await applyBgMusicIfNeeded(
           jobId,
-          job.finalArtifactPath,
+          mainArtifactPath,
           jobs,
           jobStore,
           publishConfig.assetCache,
@@ -142,10 +83,12 @@ export function runRender(
         );
       } catch (err) {
         job.status = "failed";
-        job.error = `Stitch failed: ${err.message}`;
+        job.error = `Publish failed: ${err.message}`;
         job.failedAt = new Date().toISOString();
         jobStore?.save(job);
-        console.error(`[StitchFailed][${jobId}] Stitch failed: ${err.message}`);
+        console.error(
+          `[PublishFailed][${jobId}] Publish failed: ${err.message}`,
+        );
       }
       resolve(job);
     });
@@ -159,50 +102,7 @@ function logProcessOutput(taskName, jobId, text) {
   }
 }
 
-async function stitchPhase(jobId, hyperframesOutputPath, jobs, assetCache) {
-  const job = jobs.get(jobId);
-  const stitchDir = path.join(job.compositionDir, "stitch");
-  await fs.mkdir(stitchDir, { recursive: true });
-
-  const segments = [];
-  if (job.intro) {
-    const introPath = path.join(stitchDir, "intro.mp4");
-    await materializeStitchAsset(
-      assetCache,
-      job.intro,
-      introPath,
-      jobId,
-      "intro",
-    );
-    segments.push(introPath);
-  }
-  segments.push(hyperframesOutputPath);
-  if (job.outro) {
-    const outroPath = path.join(stitchDir, "outro.mp4");
-    await materializeStitchAsset(
-      assetCache,
-      job.outro,
-      outroPath,
-      jobId,
-      "outro",
-    );
-    segments.push(outroPath);
-  }
-
-  const tmpOut = path.join(stitchDir, "final.mp4");
-  await stitchSegments({
-    inputs: segments,
-    outputPath: tmpOut,
-    width: job.width || 1920,
-    height: job.height || 1080,
-    fps: 30,
-    jobId,
-    taskName: "IntroOutroStitch",
-  });
-  await fs.copyFile(tmpOut, job.finalArtifactPath);
-}
-
-async function materializeStitchAsset(
+async function materializeAsset(
   assetCache,
   url,
   destPath,
@@ -236,7 +136,7 @@ async function applyBgMusicIfNeeded(
   console.log(`[BackgroundMusicStarted][${jobId}] Applying background music`);
 
   const bgMusicPath = path.join(job.artifactsDir, "background-music");
-  await materializeStitchAsset(
+  await materializeAsset(
     assetCache,
     job.bgMusic,
     bgMusicPath,

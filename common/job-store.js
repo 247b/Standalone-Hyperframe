@@ -18,8 +18,6 @@ const PUBLIC_JOB_FIELDS = [
   'uploadedKey',
   'mainArtifactPath',
   'finalArtifactPath',
-  'intro',
-  'outro',
   'bgMusic',
   'width',
   'height',
@@ -56,7 +54,7 @@ export function createJobStore(dbPath) {
   const activeCount = db.prepare(`
     SELECT COUNT(*) AS count
     FROM jobs
-    WHERE status IN ('preparing_assets', 'rendering', 'stitching', 'applying_bg_music', 'uploading')
+    WHERE status IN ('preparing_assets', 'rendering', 'applying_bg_music', 'uploading')
   `);
   const totalCount = db.prepare('SELECT COUNT(*) AS count FROM jobs');
 

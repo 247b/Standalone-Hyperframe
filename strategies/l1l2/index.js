@@ -7,9 +7,9 @@ import {
 } from "../../common/media.js";
 import { OST_ANIMATION } from "../../common/ost-style.js";
 
-const ENABLE_TOP_RIGHT_OVERLAY = true;
 const IMAGE_PAN_ENTER_RATIO = 0.28;
 const IMAGE_PAN_MIN_HOLD_RATIO = 0.2;
+const DEFAULT_BACKGROUND = "#000000";
 
 function truncateDuration(duration) {
   return Math.floor(duration * 100) / 100;
@@ -37,55 +37,68 @@ function calculateImagePanTiming(sceneDuration) {
   };
 }
 
-function isSpeedrun(payload) {
-  return payload?.speedrun === true;
-}
-
 function parseL1L2(payload) {
-  const sections = Array.isArray(payload.sections) ? payload.sections : [];
-  if (sections.length === 0)
-    throw new Error('L1L2 timeline requires a non-empty "sections" array');
+  if (!payload?.id) {
+    throw new Error('Missing required field "id"');
+  }
 
-  const parsed = sections.map((section, idx) => {
-    if (!section.link)
-      throw new Error(`L1L2 section ${idx} is missing "link"`);
-    if (!section.audio)
-      throw new Error(`L1L2 section ${idx} is missing "audio"`);
-    const type = section.type === "clip" ? "clip" : "image";
-    const ost = typeof section.ost === "string" ? section.ost.trim() : "";
-    return { idx, type, link: section.link, audio: section.audio, ost };
+  const hasScenesKey = Object.prototype.hasOwnProperty.call(payload, "scenes");
+  const scenes = hasScenesKey && Array.isArray(payload.scenes) ? payload.scenes : [];
+  const hasTitleCard = Boolean(payload.titleCard);
+  const hasRenderableMedia = Boolean(
+    payload.intro || payload.outro || hasTitleCard || scenes.length > 0,
+  );
+
+  if (hasTitleCard && (typeof payload.titleCard !== "object" || Array.isArray(payload.titleCard))) {
+    throw new Error('Invalid "titleCard": expected an object with "vidSrc" and "titleText"');
+  }
+  if (hasTitleCard && (!payload.titleCard.vidSrc || !payload.titleCard.titleText)) {
+    throw new Error('Invalid "titleCard": provide both "vidSrc" and "titleText"');
+  }
+  if (hasScenesKey && scenes.length === 0) {
+    throw new Error('Invalid "scenes": expected a non-empty array when provided');
+  }
+  if (!hasRenderableMedia) {
+    throw new Error(
+      'Missing dependencies: provide at least one of "intro", "outro", "titleCard", or a non-empty "scenes" array. "logo" and "bgMusic" require renderable media.',
+    );
+  }
+
+  const parsed = scenes.map((scene, idx) => {
+    if (!scene.link)
+      throw new Error(`L1L2 scene ${idx} is missing "link"`);
+    if (!scene.audio)
+      throw new Error(`L1L2 scene ${idx} is missing "audio"`);
+    const type = scene.type === "clip" ? "clip" : "image";
+    const ost = typeof scene.ost === "string" ? scene.ost.trim() : "";
+    return { idx, type, link: scene.link, audio: scene.audio, ost };
   });
-  const speedrun = isSpeedrun(payload);
 
   return {
     _kind: "L1L2",
-    id: payload.id || `l1l2-${Date.now()}`,
-    speedrun,
+    id: String(payload.id),
     width: 1920,
     height: 1080,
-    background: payload.background || "#000000",
-    overlayImage: !speedrun && payload.overlayImage ? String(payload.overlayImage) : null,
-    bgMusic: !speedrun && payload.bgMusic ? String(payload.bgMusic) : null,
-    intro: !speedrun && payload.intro ? String(payload.intro) : null,
-    outro: !speedrun && payload.outro ? String(payload.outro) : null,
-    titleCard: !speedrun && payload.titleCard
+    background: DEFAULT_BACKGROUND,
+    logo: payload.logo ? String(payload.logo) : null,
+    bgMusic: payload.bgMusic ? String(payload.bgMusic) : null,
+    intro: payload.intro ? String(payload.intro) : null,
+    outro: payload.outro ? String(payload.outro) : null,
+    titleCard: payload.titleCard
       ? {
           vidSrc: payload.titleCard.vidSrc ? String(payload.titleCard.vidSrc) : "",
           titleText: payload.titleCard.titleText ? String(payload.titleCard.titleText) : "",
         }
       : null,
-    sections: parsed,
+    scenes: parsed,
   };
 }
 
 export function normalizeTimelineInput(payload) {
-  if (payload && typeof payload.type === "string") {
-    const type = payload.type.toUpperCase();
-    if (type === "L1L2" || type === "L1" || type === "L2") {
-      return parseL1L2(payload);
-    }
+  if (payload && typeof payload.type === "string" && payload.type.toUpperCase() === "L1L2") {
+    return parseL1L2(payload);
   }
-  throw new Error(`Unsupported type for L1L2 strategy: "${payload?.type}"`);
+  throw new Error(`Unsupported type for L1L2 strategy: "${payload?.type}". Supported value: "L1L2"`);
 }
 
 export async function prepareAssets(
@@ -101,7 +114,7 @@ export async function prepareAssets(
   await fs.mkdir(assetsDir, { recursive: true });
 
   const clips = [];
-  let overlayImageRel = null;
+  let logoRel = null;
 
   // --- Intro ---
   let introRelPath = null;
@@ -147,10 +160,10 @@ export async function prepareAssets(
     );
   }
 
-  // --- Sections: image + narration audio ---
+  // --- Scenes: image + narration audio ---
   // Duration of each scene is driven by its narration audio length.
-  const sections = [];
-  for (const s of l1l2.sections) {
+  const scenes = [];
+  for (const s of l1l2.scenes) {
     // Image (no probing needed — shown for audio duration)
     let imgExt = s.type === "clip" ? ".mp4" : ".jpg";
     try {
@@ -216,11 +229,11 @@ export async function prepareAssets(
         await reencodeForSeek(clipAbs, { jobId, label: `section-${s.idx}-clip` });
       }
 
-      sections.push({ idx: s.idx, type: "clip", clipRel, audioRel, duration, ost: s.ost });
+      scenes.push({ idx: s.idx, type: "clip", clipRel, audioRel, duration, ost: s.ost });
       continue;
     }
 
-    sections.push({ idx: s.idx, type: "image", imgRel, audioRel, duration, ost: s.ost });
+    scenes.push({ idx: s.idx, type: "image", imgRel, audioRel, duration, ost: s.ost });
   }
 
   // --- Outro ---
@@ -244,20 +257,20 @@ export async function prepareAssets(
     );
   }
 
-  // --- Overlay image ---
-  if (ENABLE_TOP_RIGHT_OVERLAY && l1l2.overlayImage) {
+  // --- Logo ---
+  if (l1l2.logo) {
     let imageExt = ".png";
     try {
       const ext = path
-        .extname(new URL(l1l2.overlayImage).pathname)
+        .extname(new URL(l1l2.logo).pathname)
         .toLowerCase();
       if (ext) imageExt = ext;
     } catch (_) {}
-    overlayImageRel = `assets/top-right-overlay${imageExt}`;
+    logoRel = `assets/logo${imageExt}`;
     await assetCache.materialize(
-      l1l2.overlayImage,
-      path.join(jobDir, overlayImageRel),
-      { fallbackExt: ".png", jobId, label: "top-right-overlay" },
+      l1l2.logo,
+      path.join(jobDir, logoRel),
+      { fallbackExt: ".png", jobId, label: "logo" },
     );
   }
 
@@ -269,10 +282,10 @@ export async function prepareAssets(
   //   150 — section narration audio
   //   200 — OST chips
   //   250 — title card text overlay
-  //   300 — top-right overlay image (full span)
+  //   300 - logo image (full span)
 
   const mainDuration = truncateDuration(
-    titleCardDuration + sections.reduce((sum, s) => sum + s.duration, 0),
+    titleCardDuration + scenes.reduce((sum, s) => sum + s.duration, 0),
   );
   const totalDuration = truncateDuration(introDuration + mainDuration + outroDuration);
 
@@ -290,7 +303,7 @@ export async function prepareAssets(
     });
   }
 
-  // Title card + sections (offset by intro duration)
+  // Title card + scenes (offset by intro duration)
   let cursor = introDuration;
 
   if (titleCardRelPath) {
@@ -304,21 +317,19 @@ export async function prepareAssets(
       trackIndex: 100,
       animation: { fadeIn: 0, fadeOut: 0 },
     });
-    if (l1l2.titleCard?.titleText) {
-      clips.push({
-        id: "l1l2-title-card-text",
-        type: "titleText",
-        content: l1l2.titleCard.titleText,
-        start: cursor,
-        duration: titleCardDuration,
-        trackIndex: 250,
-        animation: { fadeIn: 0.3, fadeOut: 0.3 },
-      });
-    }
+    clips.push({
+      id: "l1l2-title-card-text",
+      type: "titleText",
+      content: l1l2.titleCard.titleText,
+      start: cursor,
+      duration: titleCardDuration,
+      trackIndex: 250,
+      animation: { fadeIn: 0.3, fadeOut: 0.3 },
+    });
     cursor = truncateDuration(cursor + titleCardDuration);
   }
 
-  for (const section of sections) {
+  for (const section of scenes) {
     if (section.type === "clip") {
       clips.push({
         id: `l1l2-section-${section.idx}-clip`,
@@ -384,12 +395,12 @@ export async function prepareAssets(
     });
   }
 
-  // Overlay image spans full composition
-  if (ENABLE_TOP_RIGHT_OVERLAY && overlayImageRel) {
+  // Logo spans full composition
+  if (logoRel) {
     clips.push({
-      id: "l1l2-top-right-overlay",
+      id: "l1l2-logo",
       type: "topRightImage",
-      content: overlayImageRel,
+      content: logoRel,
       start: 0,
       duration: totalDuration,
       trackIndex: 300,
@@ -403,9 +414,6 @@ export async function prepareAssets(
     width: l1l2.width,
     height: l1l2.height,
     background: l1l2.background,
-    // intro/outro embedded in timeline — skip post-render FFmpeg stitching
-    intro: null,
-    outro: null,
     bgMusic: l1l2.bgMusic || null,
     clips,
   };
