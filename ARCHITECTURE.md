@@ -171,6 +171,8 @@ Responsibilities:
 - `reencodeForSeek`
 - `stretchVideoToDuration`
 
+Both video paths emit 30fps H.264 with GOP/keyframe settings of `-g 30 -keyint_min 30` so HyperFrames can seek reliably during frame capture.
+
 It does not apply to background music, because background music copies the video stream and only processes audio.
 
 ## Render Flow

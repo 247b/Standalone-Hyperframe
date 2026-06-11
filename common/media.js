@@ -110,6 +110,8 @@ export async function stretchVideoToDuration(
     '-filter:v', `setpts=${factor.toFixed(6)}*PTS`,
     '-an',
     '-r', '30',
+    '-g', '30',
+    '-keyint_min', '30',
     '-c:v', 'libx264',
     '-preset', process.env.FFMPEG_PRESET || 'veryfast',
     '-pix_fmt', 'yuv420p',
